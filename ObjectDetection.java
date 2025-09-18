@@ -169,7 +169,7 @@ public class ObjectDetection extends LinearOpMode
             Imgproc.cvtColor(input, hsv, Imgproc.COLOR_RGB2HSV);
             Core.inRange(hsv, lowerGreen, upperGreen, mask);
 
-            // 🔧 Sterkere morfologische filtering om gaten te dichten
+            // Morfologische filtering om gaten te dichten
             Imgproc.morphologyEx(mask, mask, Imgproc.MORPH_CLOSE,
                     Imgproc.getStructuringElement(Imgproc.MORPH_ELLIPSE, new Size(15, 15)));
             Imgproc.morphologyEx(mask, mask, Imgproc.MORPH_OPEN,
@@ -183,44 +183,35 @@ public class ObjectDetection extends LinearOpMode
             lastRadius = 0;
             lastPixelDiameter = 0;
 
-            if (!contours.isEmpty())
-            {
-                // 🔧 Merge alle contouren in één grote contour
-                List<Point> allPoints = new ArrayList<>();
-                for (MatOfPoint contour : contours) {
-                    allPoints.addAll(contour.toList());
-                    contour.release();
-                }
+            // ✅ FIX: Loop over all external contours, draw circle per ball
+            for (MatOfPoint contour : contours) {
+                double area = Imgproc.contourArea(contour);
+                if (area < 20) continue; // ignore tiny specks of noise
 
-                MatOfPoint2f mergedContour = new MatOfPoint2f();
-                mergedContour.fromList(allPoints);
-
-                // MinEnclosingCircle over alle punten samen
+                MatOfPoint2f contour2f = new MatOfPoint2f(contour.toArray());
                 Point center = new Point();
                 float[] radius = new float[1];
-                Imgproc.minEnclosingCircle(mergedContour, center, radius);
+                Imgproc.minEnclosingCircle(contour2f, center, radius);
 
-                double pixelRadius = radius[0];
-                double pixelDiameter = 2 * pixelRadius;
-                lastPixelDiameter = pixelDiameter;
+                if (radius[0] > 2) { // filter out tiny blobs
+                    double pixelDiameter = 2 * radius[0];
+                    double distance = (realDiameter * focalLength) / pixelDiameter;
 
-                // Afstand berekenen
-                double distance = (realDiameter * focalLength) / pixelDiameter;
+                    // Update last values (telemetry will show the last ball processed)
+                    lastPixelDiameter = pixelDiameter;
+                    lastDistance = distance;
+                    lastRadius = radius[0];
+                    lastCenter = center;
 
-                lastDistance = distance;
-                lastRadius = pixelRadius;
-                lastCenter = center;
+                    // Draw circle
+                    Imgproc.circle(input, center, (int) radius[0], new Scalar(0, 255, 0), 2);
+                    Imgproc.circle(input, center, 3, new Scalar(0, 0, 255), -1);
 
-                // Tekenen
-                Imgproc.circle(input, center, (int) pixelRadius, new Scalar(0, 255, 0), 2);
-                Imgproc.circle(input, center, 3, new Scalar(0, 0, 255), -1);
-
-                numberOfGreenObjects = 1; // altijd 1 bal na merge
-
-                mergedContour.release();
+                    numberOfGreenObjects++;
+                }
             }
 
-            // Center check
+            // Center check for the last detected ball
             if (lastCenter.x > 0 && lastCenter.y > 0) {
                 double centerX = CAMERA_WIDTH / 2.0;
                 double centerY = CAMERA_HEIGHT / 2.0;
@@ -257,4 +248,4 @@ public class ObjectDetection extends LinearOpMode
             }
         }
     }
-}  
+}
